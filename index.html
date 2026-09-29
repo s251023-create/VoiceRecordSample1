@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="ja" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SleepPulse AI - マルチセンサー睡眠解析</title>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        sleep: {
+                            900: '#070a13',
+                            800: '#0f172a',
+                            700: '#1e293b',
+                            awake: '#f43f5e',
+                            rem: '#c084fc',
+                            light: '#38bdf8',
+                            deep: '#3b82f6',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- FontAwesome & Google Fonts -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #070a13;
+            color: #f8fafc;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* カスタムスクロールバー */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+
+        /* パルス波形アニメーション */
+        @keyframes ring-glow {
+            0% { transform: scale(0.95); opacity: 0.8; }
+            50% { transform: scale(1.05); opacity: 0.3; }
+            100% { transform: scale(0.95); opacity: 0.8; }
+        }
+        .animate-ring-glow { animation: ring-glow 3s infinite ease-in-out; }
+
+        /* 長押しプログレスバー */
+        .hold-progress {
+            transition: width 0.1s linear;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between overflow-x-hidden antialiased select-none">
+
+    <!-- ヘッダーナビゲーション -->
+    <header class="w-full bg-slate-900/80 backdrop-blur-md border-b border-slate-800/80 sticky top-0 z-30 px-4 py-3">
+        <div class="max-w-md mx-auto flex justify-between items-center">
+            <div class="flex items-center space-x-2.5">
+                <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                    <i class="fa-solid fa-moon text-white text-sm"></i>
+                </div>
+                <span class="font-bold text-base tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">SleepPulse <span class="text-indigo-400 text-xs font-semibold px-1.5 py-0.5 rounded bg-indigo-950/60 border border-indigo-800/50">PRO</span></span>
+            </div>
+
+            <!-- ステータスインジケーター -->
+            <div id="sensor-indicators" class="flex items-center space-x-2 text-[10px]">
+                <span id="badge-motion" class="px-2 py-0.5 rounded-full bg-slate-800 text-slate-500 border border-slate-700/50 flex items-center gap-1">
+                    <i class="fa-solid fa-arrows-up-down-left-right text-[8px]"></i> 体動
+                </span>
+                <span id="badge-audio" class="px-2 py-0.5 rounded-full bg-slate-800 text-slate-500 border border-slate-700/50 flex items-center gap-1">
+                    <i class="fa-solid fa-microphone text-[8px]"></i> マイク
+                </span>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 w-full max-w-md mx-auto p-4 flex flex-col justify-center relative">
+
+        <!-- 1. 準備・スタンバイ画面 (STANDBY VIEW) -->
+        <section id="view-standby" class="flex flex-col items-center justify-center space-y-6 py-6">
+            <div class="text-center space-y-2">
+                <h1 class="text-2xl font-bold text-white tracking-tight">睡眠解析を開始準備</h1>
+                <p class="text-xs text-slate-400 leading-relaxed max-w-xs mx-auto">
+                    スマホを枕元（布団の上）に置き、充電器に接続してスタートボタンを押してください。
+                </p>
+            </div>
+
+            <!-- スタートサークルボタン -->
+            <div class="relative my-4 flex items-center justify-center">
+                <div class="absolute inset-0 rounded-full bg-gradient-to-tr from-indigo-600/30 to-purple-600/30 blur-xl animate-ring-glow"></div>
+                <button id="btn-start" class="relative z-10 w-36 h-36 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 active:scale-95 transition-all duration-300 flex flex-col items-center justify-center text-white shadow-2xl shadow-indigo-600/40 border border-indigo-400/30 group">
+                    <i class="fa-solid fa-play text-3xl mb-1 group-hover:scale-110 transition-transform"></i>
+                    <span class="text-xs font-bold tracking-wider uppercase">計測開始</span>
+                </button>
+            </div>
+
+            <!-- パーミッション・アラーティング -->
+            <div id="permission-box" class="w-full bg-slate-900/90 border border-indigo-900/40 rounded-2xl p-4 space-y-3">
+                <div class="flex items-center space-x-2 text-indigo-400 font-semibold text-xs">
+                    <i class="fa-solid fa-shield-halved"></i>
+                    <span>センサー連携ステータス</span>
+                </div>
+                <ul class="text-xs space-y-2 text-slate-300">
+                    <li class="flex justify-between items-center">
+                        <span><i class="fa-solid fa-mobile-screen-button text-slate-500 mr-2"></i>加速度センサー (体動)</span>
+                        <span id="status-motion-perm" class="text-slate-500 font-mono">未許可</span>
+                    </li>
+                    <li class="flex justify-between items-center">
+                        <span><i class="fa-solid fa-microphone text-slate-500 mr-2"></i>マイク (いびき/呼吸音)</span>
+                        <span id="status-audio-perm" class="text-slate-500 font-mono">未許可</span>
+                    </li>
+                    <li class="flex justify-between items-center">
+                        <span><i class="fa-solid fa-bolt text-slate-500 mr-2"></i>スリープ防止 (Wake Lock)</span>
+                        <span id="status-wakelock-perm" class="text-slate-500 font-mono">確認中</span>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- 過去の履歴参照ボタン -->
+            <button id="btn-view-history" class="w-full py-3 px-4 rounded-xl bg-slate-900/60 hover:bg-slate-800/80 border border-slate-800 text-slate-300 text-xs font-medium flex items-center justify-center space-x-2 transition">
+                <i class="fa-solid fa-clock-rotate-left text-slate-400"></i>
+                <span>過去の睡眠レポート履歴を見る</span>
+            </button>
+        </section>
+
+        <!-- 2. リアルタイム計測中画面 (TRACKING VIEW) -->
+        <section id="view-tracking" class="hidden flex-col space-y-5 py-2">
+            <!-- 経過時間 & 現在ステータス -->
+            <div class="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-5 text-center space-y-3 shadow-xl">
+                <div class="inline-flex items-center px-3 py-1 rounded-full bg-slate-800/90 border border-slate-700/60 space-x-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                    <span id="current-state-badge" class="text-xs font-semibold text-emerald-400 uppercase tracking-wider">覚醒 (Awake)</span>
+                </div>
+
+                <div id="tracking-timer" class="text-5xl font-mono font-bold text-white tracking-tight">
+                    00:00:00
+                </div>
+
+                <p id="tracking-status-desc" class="text-[11px] text-slate-400">
+                    マルチセンサーで睡眠状態をモニタリング中...
+                </p>
+            </div>
+
+            <!-- リアルタイム・センサーモニタリング -->
+            <div class="grid grid-cols-2 gap-3">
+                <!-- 体動インジケーター -->
+                <div class="bg-slate-900/80 border border-slate-800/80 rounded-xl p-3.5 space-y-2">
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="text-slate-400"><i class="fa-solid fa-wave-square text-indigo-400 mr-1"></i>体動強度</span>
+                        <span id="val-motion" class="font-mono text-slate-200">0.00</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                        <div id="bar-motion" class="bg-indigo-500 h-full w-0 transition-all duration-150"></div>
+                    </div>
+                </div>
+
+                <!-- 音声デシベルインジケーター -->
+                <div class="bg-slate-900/80 border border-slate-800/80 rounded-xl p-3.5 space-y-2">
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="text-slate-400"><i class="fa-solid fa-volume-high text-sky-400 mr-1"></i>マイク音量</span>
+                        <span id="val-audio" class="font-mono text-slate-200">0 dB</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                        <div id="bar-audio" class="bg-sky-400 h-full w-0 transition-all duration-150"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- イベントカウンター（いびき・寝返り） -->
+            <div class="bg-slate-900/60 border border-slate-800/60 rounded-xl p-3.5 flex justify-around text-center">
+                <div>
+                    <div class="text-[10px] text-slate-500 uppercase tracking-wider">検知されたいびき</div>
+                    <div id="count-snore" class="text-lg font-bold text-purple-400 font-mono">0 回</div>
+                </div>
+                <div class="border-r border-slate-800"></div>
+                <div>
+                    <div class="text-[10px] text-slate-500 uppercase tracking-wider">寝返り・体動</div>
+                    <div id="count-turn" class="text-lg font-bold text-indigo-400 font-mono">0 回</div>
+                </div>
+            </div>
+
+            <!-- アクションボタン -->
+            <div class="space-y-2 pt-2">
+                <!-- 黒画面（省電力モード）起動ボタン -->
+                <button id="btn-enable-stealth" class="w-full py-3.5 px-4 rounded-xl bg-slate-800/90 hover:bg-slate-800 border border-indigo-500/30 text-indigo-300 text-xs font-semibold flex items-center justify-center space-x-2 shadow-lg transition">
+                    <i class="fa-solid fa-moon"></i>
+                    <span>漆黒省電力モード（画面を真っ暗にする）</span>
+                </button>
+
+                <!-- 計測終了ボタン -->
+                <button id="btn-stop-tracking" class="w-full py-3 px-4 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/50 text-rose-300 text-xs font-medium flex items-center justify-center space-x-2 transition">
+                    <i class="fa-solid fa-stop"></i>
+                    <span>睡眠解析を終了してレポートを見る</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- 3. 解析結果レポート画面 (REPORT VIEW) -->
+        <section id="view-report" class="hidden flex-col space-y-5 py-2">
+            <!-- 睡眠スコアカード -->
+            <div class="bg-gradient-to-b from-indigo-950/60 to-slate-900/90 border border-indigo-900/40 rounded-3xl p-6 text-center space-y-3 relative overflow-hidden shadow-2xl">
+                <div class="text-xs text-indigo-300 uppercase tracking-widest font-semibold">Sleep Quality Score</div>
+                <div class="flex items-baseline justify-center space-x-1">
+                    <span id="report-score" class="text-6xl font-extrabold text-white tracking-tight">85</span>
+                    <span class="text-slate-400 text-lg">/100</span>
+                </div>
+                <div id="report-verdict" class="text-xs font-medium text-emerald-400">
+                    素晴らしい質の睡眠でした！
+                </div>
+            </div>
+
+            <!-- 主なメトリクス格子 -->
+            <div class="grid grid-cols-2 gap-3 text-xs">
+                <div class="bg-slate-900/80 border border-slate-800 p-3.5 rounded-2xl space-y-1">
+                    <div class="text-slate-500 flex items-center gap-1.5"><i class="fa-solid fa-clock text-indigo-400"></i>就寝時間 / 睡眠</div>
+                    <div id="report-duration" class="text-sm font-bold text-slate-100 font-mono">--時間--分</div>
+                </div>
+                <div class="bg-slate-900/80 border border-slate-800 p-3.5 rounded-2xl space-y-1">
+                    <div class="text-slate-500 flex items-center gap-1.5"><i class="fa-solid fa-bed text-sky-400"></i>睡眠効率</div>
+                    <div id="report-efficiency" class="text-sm font-bold text-slate-100 font-mono">-- %</div>
+                </div>
+                <div class="bg-slate-900/80 border border-slate-800 p-3.5 rounded-2xl space-y-1">
+                    <div class="text-slate-500 flex items-center gap-1.5"><i class="fa-solid fa-face-frown text-purple-400"></i>いびき回数</div>
+                    <div id="report-snores" class="text-sm font-bold text-slate-100 font-mono">0 回</div>
+                </div>
+                <div class="bg-slate-900/80 border border-slate-800 p-3.5 rounded-2xl space-y-1">
+                    <div class="text-slate-500 flex items-center gap-1.5"><i class="fa-solid fa-person-falling-burst text-rose-400"></i>中途覚醒/体動</div>
+                    <div id="report-awakenings" class="text-sm font-bold text-slate-100 font-mono">0 回</div>
+                </div>
+            </div>
+
+            <!-- 睡眠サイクル・ヒプノグラム (Canvas Graph) -->
+            <div class="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-4 space-y-3">
+                <div class="flex justify-between items-center text-xs">
+                    <span class="font-semibold text-slate-200"><i class="fa-solid fa-chart-line text-indigo-400 mr-1"></i>睡眠ステージ推移 (Hypnogram)</span>
+                    <span class="text-[10px] text-slate-500">時間経過 →</span>
+                </div>
+
+                <!-- ステージ凡例 -->
+                <div class="flex justify-between items-center text-[10px] text-slate-400 px-1">
+                    <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-rose-500"></span>覚醒</span>
+                    <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-purple-400"></span>REM</span>
+                    <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-sky-400"></span>浅い</span>
+                    <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-blue-600"></span>深い</span>
+                </div>
+
+                <!-- Canvas領域 -->
+                <div class="w-full h-44 bg-slate-950/80 rounded-xl p-2 border border-slate-800 relative">
+                    <canvas id="hypnogram-canvas" class="w-full h-full block"></canvas>
+                </div>
+            </div>
+
+            <!-- アクションボタン -->
+            <div class="flex gap-2">
+                <button id="btn-export-data" class="flex-1 py-3 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center justify-center space-x-1.5 transition">
+                    <i class="fa-solid fa-download"></i>
+                    <span>データ保存 (JSON)</span>
+                </button>
+                <button id="btn-return-home" class="flex-1 py-3 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center justify-center space-x-1.5 transition">
+                    <i class="fa-solid fa-house"></i>
+                    <span>ホームへ戻る</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- 4. 過去履歴モーダル (HISTORY MODAL) -->
+        <section id="modal-history" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md max-h-[80vh] flex flex-col p-4 space-y-4 shadow-2xl">
+                <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                    <h3 class="font-bold text-sm text-white flex items-center gap-2">
+                        <i class="fa-solid fa-clock-rotate-left text-indigo-400"></i>過去の睡眠ログ
+                    </h3>
+                    <button id="btn-close-history" class="text-slate-400 hover:text-white p-1">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
+
+                <div id="history-list-container" class="flex-1 overflow-y-auto space-y-2 pr-1 text-xs">
+                    <!-- JSで動的挿入 -->
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- 漆黒省電力モード（画面完全オフ風）オーバーレイ -->
+    <div id="overlay-stealth" class="fixed inset-0 bg-black z-50 hidden flex flex-col items-center justify-between p-8 text-center select-none">
+        <div class="pt-8 opacity-20">
+            <i class="fa-solid fa-moon text-3xl text-slate-700"></i>
+        </div>
+
+        <div class="space-y-4">
+            <p class="text-xs text-slate-800 font-medium">
+                睡眠計測中（画面消灯モード）
+            </p>
+            <!-- ロック解除用長押しボタン -->
+            <div id="btn-unlock-hold" class="relative overflow-hidden w-48 h-12 rounded-full border border-slate-900 bg-slate-950 flex items-center justify-center text-[11px] text-slate-700 font-semibold cursor-pointer select-none">
+                <div id="unlock-progress" class="absolute left-0 top-0 bottom-0 bg-indigo-950/60 w-0 hold-progress"></div>
+                <span class="relative z-10">長押しで解除</span>
+            </div>
+        </div>
+
+        <div class="text-[10px] text-slate-900">
+            SleepPulse Safety Ambient
+        </div>
+    </div>
+
+    <!-- フッター -->
+    <footer class="w-full text-center py-3 text-[10px] text-slate-600 border-t border-slate-900">
+        SleepPulse AI Engine • DeviceMotion + WebAudio Core
+    </footer>
+
+    <script>
+        /**
+         * SleepPulse AI - Application Logic
+         */
+        
+        // --- Application State ---
+        const state = {
+            isTracking: false,
+            startTime: null,
+            endTime: null,
+            timerInterval: null,
+            analysisInterval: null,
+            wakeLock: null,
+            
+            // Sensor Data
+            motion: {
+                current: 0,
+                history: [],
+                turnCount: 0
+            },
+            audio: {
+                context: null,
+                analyser: null,
+                stream: null,
+                currentDb: -100,
+                snoreCount: 0,
+                snoreCooldown: false
+            },
+
+            // Sleep Analysis Time-Series Data
+            // ステージ: 3: Awake, 2: REM, 1: Light, 0: Deep
+            timeline: [], // [{ timestamp, phase, motion, db }]
+            currentState: 'Awake'
+        };
+
+        // DOM Elements
+        const views = {
+            standby: document.getElementById('view-standby'),
+            tracking: document.getElementById('view-tracking'),
+            report: document.getElementById('view-report'),
+            modalHistory: document.getElementById('modal-history')
+        };
+
+        const elements = {
+            btnStart: document.getElementById('btn-start'),
+            btnStopTracking: document.getElementById('btn-stop-tracking'),
+            btnEnableStealth: document.getElementById('btn-enable-stealth'),
+            btnExportData: document.getElementById('btn-export-data'),
+            btnReturnHome: document.getElementById('btn-return-home'),
+            btnViewHistory: document.getElementById('btn-view-history'),
+            btnCloseHistory: document.getElementById('btn-close-history'),
+            
+            overlayStealth: document.getElementById('overlay-stealth'),
+            btnUnlockHold: document.getElementById('btn-unlock-hold'),
+            unlockProgress: document.getElementById('unlock-progress'),
+            
+            timerDisplay: document.getElementById('tracking-timer'),
+            currentStateBadge: document.getElementById('current-state-badge'),
+            
+            valMotion: document.getElementById('val-motion'),
+            barMotion: document.getElementById('bar-motion'),
+            valAudio: document.getElementById('val-audio'),
+            barAudio: document.getElementById('bar-audio'),
+            
+            countSnore: document.getElementById('count-snore'),
+            countTurn: document.getElementById('count-turn'),
+
+            badgeMotion: document.getElementById('badge-motion'),
+            badgeAudio: document.getElementById('badge-audio'),
+            
+            statusMotionPerm: document.getElementById('status-motion-perm'),
+            statusAudioPerm: document.getElementById('status-audio-perm'),
+            statusWakelockPerm: document.getElementById('status-wakelock-perm'),
+
+            // Report elements
+            reportScore: document.getElementById('report-score'),
+            reportVerdict: document.getElementById('report-verdict'),
+            reportDuration: document.getElementById('report-duration'),
+            reportEfficiency: document.getElementById('report-efficiency'),
+            reportSnores: document.getElementById('report-snores'),
+            reportAwakenings: document.getElementById('report-awakenings'),
+            canvasHypnogram: document.getElementById('hypnogram-canvas'),
+            historyListContainer: document.getElementById('history-list-container')
+        };
+
+        // --- 1. SENSOR & PERMISSION INITIALIZATION ---
+
+        // Wake Lock 権限確認・有効化
+        async function requestWakeLock() {
+            if ('wakeLock' in navigator) {
+                try {
+                    state.wakeLock = await navigator.wakeLock.request('screen');
+                    elements.statusWakelockPerm.textContent = '有効';
+                    elements.statusWakelockPerm.className = 'text-emerald-400 font-mono';
+                } catch (err) {
+                    console.warn('WakeLock Failed:', err);
+                    elements.statusWakelockPerm.textContent = '失敗';
+                    elements.statusWakelockPerm.className = 'text-rose-400 font-mono';
+                }
+            } else {
+                elements.statusWakelockPerm.textContent = '非対応';
+                elements.statusWakelockPerm.className = 'text-slate-500 font-mono';
+            }
+        }
+
+        function releaseWakeLock() {
+            if (state.wakeLock) {
+                state.wakeLock.release().catch(console.error);
+                state.wakeLock = null;
+            }
+        }
+
+        // 加速度センサー (DeviceMotion) リクエスト
+        async function initMotionSensor() {
+            if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+                try {
+                    const response = await DeviceMotionEvent.requestPermission();
+                    if (response === 'granted') {
+                        window.addEventListener('devicemotion', handleMotionEvent);
+                        setSensorStatus(elements.badgeMotion, elements.statusMotionPerm, true);
+                        return true;
+                    }
+                } catch (err) {
+                    console.error('Motion Perm Error:', err);
+                }
+                setSensorStatus(elements.badgeMotion, elements.statusMotionPerm, false);
+                return false;
+            } else if (window.DeviceMotionEvent) {
+                window.addEventListener('devicemotion', handleMotionEvent);
+                setSensorStatus(elements.badgeMotion, elements.statusMotionPerm, true);
+                return true;
+            } else {
+                setSensorStatus(elements.badgeMotion, elements.statusMotionPerm, false);
+                return false;
+            }
+        }
+
+        let lastAccel = { x: 0, y: 0, z: 0 };
+        function handleMotionEvent(event) {
+            if (!state.isTracking) return;
+            const acc = event.accelerationIncludingGravity || event.acceleration;
+            if (!acc) return;
+
+            // 変化量 (Jerk / Magnitude) 算出
+            const dx = acc.x - lastAccel.x;
+            const dy = acc.y - lastAccel.y;
+            const dz = acc.z - lastAccel.z;
+            lastAccel = { x: acc.x, y: acc.y, z: acc.z };
+
+            const magnitude = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            
+            // 平滑化
+            state.motion.current = state.motion.current * 0.7 + magnitude * 0.3;
+
+            // 寝返りカウント（急激な動き判定）
+            if (state.motion.current > 2.5) {
+                state.motion.turnCount++;
+                elements.countTurn.textContent = `${state.motion.turnCount} 回`;
+            }
+        }
+
+        // マイク音声解析 (Web Audio API)
+        async function initAudioSensor() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                state.audio.stream = stream;
+                
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                state.audio.context = new AudioContext();
+                const source = state.audio.context.createMediaStreamSource(stream);
+                
+                state.audio.analyser = state.audio.context.createAnalyser();
+                state.audio.analyser.fftSize = 512;
+                source.connect(state.audio.analyser);
+
+                setSensorStatus(elements.badgeAudio, elements.statusAudioPerm, true);
+                return true;
+            } catch (err) {
+                console.error('Audio Sensor Error:', err);
+                setSensorStatus(elements.badgeAudio, elements.statusAudioPerm, false);
+                return false;
+            }
+        }
+
+        function analyzeAudioFrame() {
+            if (!state.isTracking || !state.audio.analyser) return;
+
+            const bufferLength = state.audio.analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            state.audio.analyser.getByteFrequencyData(dataArray);
+
+            // 1. RMS (音量デシベル換算)
+            let sum = 0;
+            for (let i = 0; i < bufferLength; i++) {
+                sum += dataArray[i] * dataArray[i];
+            }
+            const rms = Math.sqrt(sum / bufferLength);
+            // 簡易dB計算 (-100dB ~ 0dB)
+            const db = rms > 0 ? Math.round(20 * Math.log10(rms / 255)) : -100;
+            state.audio.currentDb = db;
+
+            // 2. 周波数帯別解析 (いびき検出)
+            // いびき特有の周波数帯 (200Hz - 800Hz 付近)
+            const lowMidEnergy = dataArray.slice(4, 25).reduce((a, b) => a + b, 0) / 21;
+
+            // いびき判定ロジック (音量が一定以上 & 低中音域エネルギー突出)
+            if (db > -35 && lowMidEnergy > 70 && !state.audio.snoreCooldown) {
+                state.audio.snoreCount++;
+                elements.countSnore.textContent = `${state.audio.snoreCount} 回`;
+                state.audio.snoreCooldown = true;
+                setTimeout(() => { state.audio.snoreCooldown = false; }, 3000); // 3秒クールダウン
+            }
+        }
+
+        function setSensorStatus(badgeEl, statusEl, active) {
+            if (active) {
+                badgeEl.className = 'px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-400 border border-emerald-800/50 flex items-center gap-1';
+                if (statusEl) {
+                    statusEl.textContent = '接続完了';
+                    statusEl.className = 'text-emerald-400 font-mono';
+                }
+            } else {
+                badgeEl.className = 'px-2 py-0.5 rounded-full bg-rose-950/80 text-rose-400 border border-rose-800/50 flex items-center gap-1';
+                if (statusEl) {
+                    statusEl.textContent = '利用不可';
+                    statusEl.className = 'text-rose-400 font-mono';
+                }
+            }
+        }
+
+        // --- 2. REAL-TIME TRACKING ENGINE ---
+
+        elements.btnStart.addEventListener('click', async () => {
+            // センサーアクセス要求
+            await requestWakeLock();
+            await initMotionSensor();
+            await initAudioSensor();
+
+            // 計測状態切り替え
+            state.isTracking = true;
+            state.startTime = new Date();
+            state.timeline = [];
+            state.motion.turnCount = 0;
+            state.audio.snoreCount = 0;
+
+            elements.countSnore.textContent = '0 回';
+            elements.countTurn.textContent = '0 回';
+
+            switchView('tracking');
+
+            // タイマー開始
+            state.timerInterval = setInterval(updateTimerUI, 1000);
+
+            // リアルタイム解析ループ (10秒単位で判定)
+            state.analysisInterval = setInterval(runSleepAnalysisLoop, 5000);
+        });
+
+        elements.btnStopTracking.addEventListener('click', () => {
+            stopTrackingAndShowReport();
+        });
+
+        function stopTrackingAndShowReport() {
+            state.isTracking = false;
+            state.endTime = new Date();
+
+            clearInterval(state.timerInterval);
+            clearInterval(state.analysisInterval);
+
+            releaseWakeLock();
+
+            if (state.audio.stream) {
+                state.audio.stream.getTracks().forEach(t => t.stop());
+            }
+
+            calculateAndRenderReport();
+            switchView('report');
+        }
+
+        function updateTimerUI() {
+            if (!state.startTime) return;
+            const diffSec = Math.floor((new Date() - state.startTime) / 1000);
+            const hrs = String(Math.floor(diffSec / 3600)).padStart(2, '0');
+            const mins = String(Math.floor((diffSec % 3600) / 60)).padStart(2, '0');
+            const secs = String(diffSec % 60).padStart(2, '0');
+            elements.timerDisplay.textContent = `${hrs}:${mins}:${secs}`;
+
+            // センサー表示アップデート
+            analyzeAudioFrame();
+            
+            // 体動ゲージ
+            const motionPct = Math.min(100, Math.max(0, (state.motion.current / 4) * 100));
+            elements.barMotion.style.width = `${motionPct}%`;
+            elements.valMotion.textContent = state.motion.current.toFixed(2);
+
+            // マイクゲージ
+            const dbPct = Math.min(100, Math.max(0, ((state.audio.currentDb + 100) / 100) * 100));
+            elements.barAudio.style.width = `${dbPct}%`;
+            elements.valAudio.textContent = `${state.audio.currentDb} dB`;
+        }
+
+        // 睡眠状態推定アルゴリズム (Heuristic State Machine)
+        function runSleepAnalysisLoop() {
+            const m = state.motion.current;
+            const db = state.audio.currentDb;
+
+            let phase = 'Light'; // デフォルト
+
+            // 判定ロジック
+            if (m > 1.2 || db > -25) {
+                phase = 'Awake'; // 高体動 or 大音量
+            } else if (m < 0.2 && db < -55) {
+                phase = 'Deep'; // ほぼ無動・静寂
+            } else if (m < 0.5 && db < -45) {
+                // 時間帯依存でREMとLightを区別
+                const elapsedMin = (new Date() - state.startTime) / 1000 / 60;
+                phase = (elapsedMin % 90 > 60) ? 'REM' : 'Light';
+            }
+
+            state.currentState = phase;
+
+            // タイムラインへ追加
+            state.timeline.push({
+                timestamp: new Date(),
+                phase: phase,
+                motion: m,
+                db: db
+            });
+
+            // バッジUI更新
+            updateStateBadgeUI(phase);
+        }
+
+        function updateStateBadgeUI(phase) {
+            const badgeMap = {
+                'Awake': { text: '覚醒 (Awake)', class: 'text-rose-400 bg-rose-950/80 border-rose-800' },
+                'REM': { text: 'REM睡眠', class: 'text-purple-400 bg-purple-950/80 border-purple-800' },
+                'Light': { text: '浅い睡眠', class: 'text-sky-400 bg-sky-950/80 border-sky-800' },
+                'Deep': { text: '深い睡眠', class: 'text-blue-400 bg-blue-950/80 border-blue-800' }
+            };
+
+            const config = badgeMap[phase] || badgeMap['Light'];
+            elements.currentStateBadge.textContent = config.text;
+            elements.currentStateBadge.parentElement.className = `inline-flex items-center px-3 py-1 rounded-full border ${config.class} space-x-2`;
+        }
+
+        // --- 3. REPORT & HYPNOGRAM GENERATION ---
+
+        function calculateAndRenderReport() {
+            const durationMs = state.endTime - state.startTime;
+            const durationMin = Math.max(1, Math.round(durationMs / 1000 / 60));
+            const hrs = Math.floor(durationMin / 60);
+            const mins = durationMin % 60;
+
+            elements.reportDuration.textContent = `${hrs}時間 ${mins}分`;
+            elements.reportSnores.textContent = `${state.audio.snoreCount} 回`;
+            elements.reportAwakenings.textContent = `${state.motion.turnCount} 回`;
+
+            // 睡眠効率算出 (Awake以外の時間の割合)
+            const awakeTimeCount = state.timeline.filter(t => t.phase === 'Awake').length;
+            const totalCount = Math.max(1, state.timeline.length);
+            const efficiency = Math.round(((totalCount - awakeTimeCount) / totalCount) * 100);
+            elements.reportEfficiency.textContent = `${efficiency} %`;
+
+            // スコア算出 (簡易アルゴリズム)
+            let score = 100;
+            if (efficiency < 85) score -= (85 - efficiency);
+            score -= Math.min(20, state.audio.snoreCount * 2);
+            score -= Math.min(15, state.motion.turnCount * 1.5);
+            score = Math.max(30, Math.min(100, Math.round(score)));
+
+            elements.reportScore.textContent = score;
+
+            if (score >= 80) {
+                elements.reportVerdict.textContent = 'とても質の高い睡眠でした！';
+                elements.reportVerdict.className = 'text-xs font-medium text-emerald-400';
+            } else if (score >= 60) {
+                elements.reportVerdict.textContent = '標準的な睡眠品質です';
+                elements.reportVerdict.className = 'text-xs font-medium text-amber-400';
+            } else {
+                elements.reportVerdict.textContent = '睡眠環境の改善をおすすめします';
+                elements.reportVerdict.className = 'text-xs font-medium text-rose-400';
+            }
+
+            // LocalStorage 保存
+            saveRecordToStorage({
+                date: new Date().toLocaleDateString('ja-JP'),
+                score,
+                duration: `${hrs}h ${mins}m`,
+                efficiency,
+                snores: state.audio.snoreCount
+            });
+
+            // ヒプノグラム Canvas 描画
+            renderHypnogramCanvas();
+        }
+
+        function renderHypnogramCanvas() {
+            const canvas = elements.canvasHypnogram;
+            const ctx = canvas.getContext('2d');
+            
+            // Canvasリサイズ対応
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+
+            const w = canvas.width;
+            const h = canvas.height;
+
+            ctx.clearRect(0, 0, w, h);
+
+            if (state.timeline.length < 2) {
+                ctx.fillStyle = '#64748b';
+                ctx.font = '12px sans-serif';
+                ctx.fillText('解析データが少ないためグラフを表示できません', 20, h / 2);
+                return;
+            }
+
+            // ステージ位置 (Y軸): 3:Awake, 2:REM, 1:Light, 0:Deep
+            const phaseY = {
+                'Awake': h * 0.15,
+                'REM': h * 0.40,
+                'Light': h * 0.65,
+                'Deep': h * 0.88
+            };
+
+            const phaseColors = {
+                'Awake': '#f43f5e',
+                'REM': '#c084fc',
+                'Light': '#38bdf8',
+                'Deep': '#3b82f6'
+            };
+
+            // グリッド背景描画
+            Object.values(phaseY).forEach(y => {
+                ctx.beginPath();
+                ctx.strokeStyle = '#1e293b';
+                ctx.setLineDash([2, 4]);
+                ctx.moveTo(0, y);
+                ctx.lineTo(w, y);
+                ctx.stroke();
+            });
+
+            // 線グラフ描画
+            ctx.setLineDash([]);
+            ctx.lineWidth = 2.5;
+
+            const stepX = w / (state.timeline.length - 1);
+
+            ctx.beginPath();
+            state.timeline.forEach((item, idx) => {
+                const x = idx * stepX;
+                const y = phaseY[item.phase] || phaseY['Light'];
+                if (idx === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+
+            // グラデーションストローク
+            const grad = ctx.createLinearGradient(0, 0, w, 0);
+            grad.addColorStop(0, '#818cf8');
+            grad.addColorStop(1, '#c084fc');
+            ctx.strokeStyle = grad;
+            ctx.stroke();
+
+            // ポイント描画
+            state.timeline.forEach((item, idx) => {
+                const x = idx * stepX;
+                const y = phaseY[item.phase] || phaseY['Light'];
+                ctx.beginPath();
+                ctx.arc(x, y, 3, 0, Math.PI * 2);
+                ctx.fillStyle = phaseColors[item.phase];
+                ctx.fill();
+            });
+        }
+
+        // --- 4. STEALTH OVERLAY & INTERACTION LOGIC ---
+
+        let holdTimer = null;
+        let holdProgress = 0;
+
+        elements.btnEnableStealth.addEventListener('click', () => {
+            elements.overlayStealth.classList.remove('hidden');
+        });
+
+        // ロック解除長押しイベント
+        const startHold = () => {
+            holdProgress = 0;
+            holdTimer = setInterval(() => {
+                holdProgress += 5;
+                elements.unlockProgress.style.width = `${holdProgress}%`;
+                if (holdProgress >= 100) {
+                    clearInterval(holdTimer);
+                    elements.overlayStealth.classList.add('hidden');
+                    elements.unlockProgress.style.width = '0%';
+                }
+            }, 50);
+        };
+
+        const cancelHold = () => {
+            if (holdTimer) clearInterval(holdTimer);
+            holdProgress = 0;
+            elements.unlockProgress.style.width = '0%';
+        };
+
+        elements.btnUnlockHold.addEventListener('mousedown', startHold);
+        elements.btnUnlockHold.addEventListener('mouseup', cancelHold);
+        elements.btnUnlockHold.addEventListener('mouseleave', cancelHold);
+
+        elements.btnUnlockHold.addEventListener('touchstart', (e) => { e.preventDefault(); startHold(); });
+        elements.btnUnlockHold.addEventListener('touchend', cancelHold);
+
+        // ホーム戻る
+        elements.btnReturnHome.addEventListener('click', () => {
+            switchView('standby');
+        });
+
+        // JSONデータエクスポート
+        elements.btnExportData.addEventListener('click', () => {
+            const exportPayload = {
+                app: 'SleepPulse AI',
+                version: '1.0',
+                startTime: state.startTime,
+                endTime: state.endTime,
+                snoreCount: state.audio.snoreCount,
+                turnCount: state.motion.turnCount,
+                timeline: state.timeline
+            };
+
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportPayload, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", `sleep_report_${new Date().toISOString().slice(0,10)}.json`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+        });
+
+        // --- 5. STORAGE & HISTORY ---
+
+        function saveRecordToStorage(record) {
+            const logs = JSON.parse(localStorage.getItem('sleeppulse_logs') || '[]');
+            logs.unshift(record);
+            localStorage.setItem('sleeppulse_logs', JSON.stringify(logs.slice(0, 20))); // 直近20件
+        }
+
+        elements.btnViewHistory.addEventListener('click', () => {
+            renderHistoryList();
+            views.modalHistory.classList.remove('hidden');
+        });
+
+        elements.btnCloseHistory.addEventListener('click', () => {
+            views.modalHistory.classList.add('hidden');
+        });
+
+        function renderHistoryList() {
+            const logs = JSON.parse(localStorage.getItem('sleeppulse_logs') || '[]');
+            if (logs.length === 0) {
+                elements.historyListContainer.innerHTML = '<div class="text-center py-6 text-slate-500">過去のデータがありません</div>';
+                return;
+            }
+
+            elements.historyListContainer.innerHTML = logs.map(log => `
+                <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700/60 flex justify-between items-center">
+                    <div>
+                        <div class="font-bold text-slate-200">${log.date}</div>
+                        <div class="text-[10px] text-slate-400">時間: ${log.duration} | 効率: ${log.efficiency}%</div>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-base font-extrabold text-indigo-400">${log.score}</span>
+                        <span class="text-[10px] text-slate-500">点</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // View Navigation Helper
+        function switchView(target) {
+            Object.keys(views).forEach(k => {
+                if (k === target) {
+                    views[k].classList.remove('hidden');
+                    views[k].classList.add('flex');
+                } else {
+                    views[k].classList.add('hidden');
+                    views[k].classList.remove('flex');
+                }
+            });
+        }
+    </script>
+</body>
+</html>
