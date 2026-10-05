@@ -94,9 +94,9 @@
         <!-- ==================== STEP 1: アンケート入力画面 ==================== -->
         <section id="surveyInputScreen" class="space-y-6 my-auto py-4">
             <div class="text-center space-y-2">
-                <h2 class="text-2xl font-bold text-white tracking-tight">睡眠時間設定アンケート</h2>
+                <h2 class="text-2xl font-bold text-white tracking-tight">睡眠時間設定 & 睡眠負債診断</h2>
                 <p class="text-sm text-slate-400 max-w-md mx-auto">
-                    ご自身の年齢と目標の就寝・起床時間を設定してください。
+                    年齢、目標時間、日頃の睡眠状態を入力して現在の睡眠負債（借金）を診断します。
                 </p>
             </div>
 
@@ -150,6 +150,56 @@
                 </div>
             </div>
 
+            <!-- 睡眠不足度（睡眠負債）チェック質問 -->
+            <div class="bg-slate-900/90 rounded-2xl p-5 border border-slate-800 shadow-xl space-y-4">
+                <div class="flex items-center space-x-2 border-b border-slate-800 pb-2">
+                    <i class="fa-solid fa-battery-quarter text-rose-400"></i>
+                    <h3 class="text-sm font-bold text-slate-200">日頃の睡眠不足度チェック（睡眠負債診断）</h3>
+                </div>
+
+                <!-- Q1: 日中の眠気 -->
+                <div class="space-y-1.5">
+                    <label class="text-xs text-slate-300 font-semibold">Q1. 日中（仕事や授業中など）に強烈な眠気を感じますか？</label>
+                    <select id="qDayDrowsiness" class="w-full bg-slate-950 border border-slate-700 rounded-xl py-2 px-3 text-xs text-slate-100 focus:outline-none focus:border-brand-500">
+                        <option value="0">ほとんどない（すっきり過ごせる）</option>
+                        <option value="60" selected>たまに眠気を感じる</option>
+                        <option value="120">よく強い眠気を感じる</option>
+                        <option value="180">毎日耐えられないほどの眠気がある</option>
+                    </select>
+                </div>
+
+                <!-- Q2: 休日の朝寝坊 -->
+                <div class="space-y-1.5">
+                    <label class="text-xs text-slate-300 font-semibold">Q2. 休日は平日よりどのくらい長く寝てしまいますか？</label>
+                    <select id="qHolidaySleep" class="w-full bg-slate-950 border border-slate-700 rounded-xl py-2 px-3 text-xs text-slate-100 focus:outline-none focus:border-brand-500">
+                        <option value="0">平日と変わらない（1時間未満）</option>
+                        <option value="60" selected>1〜2時間長く寝る</option>
+                        <option value="150">2〜3時間長く寝る</option>
+                        <option value="240">3時間以上長く寝てしまう</option>
+                    </select>
+                </div>
+
+                <!-- Q3: 朝の起床時の感覚 -->
+                <div class="space-y-1.5">
+                    <label class="text-xs text-slate-300 font-semibold">Q3. 朝起きた時の満足度・目覚めの感覚はどうですか？</label>
+                    <select id="qWakeQuality" class="w-full bg-slate-950 border border-slate-700 rounded-xl py-2 px-3 text-xs text-slate-100 focus:outline-none focus:border-brand-500">
+                        <option value="0">目覚まし前に起きられ、すっきりしている</option>
+                        <option value="60" selected>少しだるさや眠気が残る</option>
+                        <option value="120">体が重く、なかなか起き上がれない</option>
+                        <option value="180">常に疲労感が残っており限界を感じる</option>
+                    </select>
+                </div>
+
+                <!-- Q4: 継続日数（新規追加） -->
+                <div class="space-y-1.5 pt-2 border-t border-slate-800">
+                    <label class="text-xs text-slate-300 font-semibold">Q4. 現在の睡眠生活（設定した就寝・起床時間）は何日続いていますか？</label>
+                    <div class="flex items-center space-x-3">
+                        <input type="number" id="qDaysContinued" min="1" max="365" value="14" class="w-full bg-slate-950 border border-slate-700 rounded-xl py-2 px-3 text-xs font-bold text-slate-100 focus:outline-none focus:border-brand-500">
+                        <span class="text-xs text-slate-300 font-bold whitespace-nowrap">日間</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- 入力時間のサマリー -->
             <div class="bg-gradient-to-r from-brand-600 to-indigo-600 rounded-2xl p-5 text-center text-white shadow-xl shadow-brand-600/20">
                 <div class="text-xs font-medium opacity-90 mb-1">設定された目標睡眠時間</div>
@@ -157,7 +207,7 @@
             </div>
 
             <button type="button" onclick="saveAndShowResults()" class="w-full py-4 bg-brand-600 hover:bg-brand-500 active:scale-98 transition text-white font-bold text-lg rounded-2xl shadow-lg shadow-brand-600/30 flex items-center justify-center space-x-2 cursor-pointer">
-                <span>設定を保存する</span>
+                <span>設定を保存して診断する</span>
                 <i class="fa-solid fa-arrow-right"></i>
             </button>
         </section>
@@ -168,7 +218,7 @@
             <div class="bg-slate-900/90 rounded-3xl p-6 border border-slate-800 shadow-2xl space-y-6">
                 <div class="inline-flex items-center space-x-2 bg-emerald-950/80 border border-emerald-500/30 text-emerald-400 px-4 py-2 rounded-full text-xs font-bold">
                     <i class="fa-solid fa-circle-check"></i>
-                    <span>設定の保存が完了しました</span>
+                    <span>設定 & 診断が完了しました</span>
                 </div>
 
                 <div class="text-xs font-semibold text-slate-400" id="resAgeText">30歳の睡眠データ</div>
@@ -177,6 +227,18 @@
                 <div class="text-center py-2">
                     <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">目標睡眠時間</div>
                     <div class="text-5xl font-black text-brand-400 font-mono tracking-tight" id="resActualTime">8時間00分</div>
+                </div>
+
+                <!-- 睡眠負債（借金）カード -->
+                <div class="bg-gradient-to-r from-rose-950/80 to-amber-950/80 rounded-2xl p-5 text-center border border-rose-500/40 shadow-lg">
+                    <div class="flex justify-center items-center space-x-2 text-rose-400 text-xs font-bold uppercase tracking-wider mb-1">
+                        <i class="fa-solid fa-receipt"></i>
+                        <span>診断された現在の睡眠負債（借金）</span>
+                    </div>
+                    <div class="text-4xl font-black text-rose-300 font-mono tracking-tight py-1" id="resDebtTime">0時間00分</div>
+                    <p class="text-xs text-rose-200/80 mt-1">
+                        アンケート回答と継続日数から算出された睡眠不足の蓄積量です。<br>高スコアの睡眠を計測して負債を返済しましょう！
+                    </p>
                 </div>
 
                 <!-- 差分カード -->
@@ -396,6 +458,29 @@
                         </div>
                         <i class="fa-solid fa-award text-2xl text-amber-400"></i>
                     </div>
+                </div>
+
+                <!-- 睡眠負債返済結果カード -->
+                <div class="bg-slate-950/90 rounded-2xl p-5 border border-brand-500/30 shadow-xl space-y-3">
+                    <div class="flex items-center space-x-2 text-emerald-400 font-bold text-xs uppercase tracking-wider">
+                        <i class="fa-solid fa-piggy-bank text-sm"></i>
+                        <span>睡眠負債（借金）返済レポート</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3 text-center">
+                        <div class="bg-slate-900 p-3 rounded-xl border border-slate-800">
+                            <span class="text-[10px] text-slate-400 font-semibold block">今回の返済額 (減額)</span>
+                            <span class="text-xl font-extrabold text-emerald-400 font-mono" id="reportRepaidDebt">-0分</span>
+                        </div>
+                        <div class="bg-slate-900 p-3 rounded-xl border border-slate-800">
+                            <span class="text-[10px] text-slate-400 font-semibold block">残りの睡眠負債</span>
+                            <span class="text-xl font-extrabold text-rose-400 font-mono" id="reportRemainingDebt">0時間0分</span>
+                        </div>
+                    </div>
+
+                    <p class="text-[11px] text-slate-400 text-center leading-relaxed" id="reportDebtMessage">
+                        計測されたスコアに応じて負債が自動返済されました！
+                    </p>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -627,8 +712,27 @@
             const sleepMin = parseInt(document.getElementById('sleepSelect').value);
             const wakeMin = parseInt(document.getElementById('wakeSelect').value);
             
+            // 設定した目標睡眠時間（分）
             const actualDiffMin = calculateSleepDurationMinutes(sleepMin, wakeMin);
             const ideal = getIdealData(currentAge);
+
+            // アンケート回答の取得（各回答値は「分」）
+            const q1 = parseInt(document.getElementById('qDayDrowsiness').value);
+            const q2 = parseInt(document.getElementById('qHolidaySleep').value);
+            const q3 = parseInt(document.getElementById('qWakeQuality').value);
+            
+            // Q4. その生活が続いている日数（継続日数）
+            const daysContinued = Math.max(1, parseInt(document.getElementById('qDaysContinued').value) || 1);
+
+            // 理想の睡眠時間の平均（分単位）
+            const idealAvgMin = (ideal.min + ideal.max) / 2;
+
+            // 1日あたりの不足分（目標時間が理想平均以上の場合は0）
+            const dailyShortageMin = Math.max(0, idealAvgMin - actualDiffMin);
+
+            // 【新規計算式】初期負債 (分)
+            // (Q1 ＋ Q2 ＋ Q3) ＋ (理想の睡眠時間の平均 － 設定した目標睡眠時間) × その生活が続いている日数
+            const initialDebtMinutes = (q1 + q2 + q3) + Math.round(dailyShortageMin * daysContinued);
 
             const heroBox = document.getElementById('diffHeroBox');
             const heroTitle = document.getElementById('diffHeroTitle');
@@ -665,6 +769,9 @@
             document.getElementById('resIdealRange').textContent = ideal.rangeText;
             document.getElementById('resSleepTime').textContent = formatMinTo24H(sleepMin);
             document.getElementById('resWakeTime').textContent = formatMinTo24H(wakeMin);
+            
+            // 負債時間表示の更新
+            document.getElementById('resDebtTime').textContent = formatDurationText(initialDebtMinutes);
 
             savedSurveyData = {
                 age: currentAge,
@@ -673,11 +780,15 @@
                 actualMinutes: actualDiffMin,
                 idealMinMinutes: ideal.min,
                 idealMaxMinutes: ideal.max,
+                idealAvgMinutes: idealAvgMin,
+                daysContinued: daysContinued,
                 idealRangeText: ideal.rangeText,
-                isInverted: isInvertedSchedule(sleepMin, wakeMin)
+                isInverted: isInvertedSchedule(sleepMin, wakeMin),
+                initialDebtMinutes: initialDebtMinutes, // 算出された初期負債
+                currentDebtMinutes: initialDebtMinutes  // 残りの負債
             };
 
-            // アプリ連携用送信 (存在する場合)
+            // アプリ連携用送信
             if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.sleepHandler) {
                 window.webkit.messageHandlers.sleepHandler.postMessage(savedSurveyData);
             }
@@ -955,10 +1066,38 @@
             if (snoreCount > 20) score -= 10;
             score = Math.max(20, Math.min(100, score));
 
+            // 計測スコアに応じた睡眠負債の返済計算
+            let repaidDebt = 0;
+            if (score >= 60) {
+                repaidDebt = Math.round(totalMins * (score / 100));
+            } else {
+                repaidDebt = 0;
+            }
+
+            let prevDebt = savedSurveyData ? savedSurveyData.currentDebtMinutes : 0;
+            let remainingDebt = Math.max(0, prevDebt - repaidDebt);
+
+            if (savedSurveyData) {
+                savedSurveyData.currentDebtMinutes = remainingDebt;
+            }
+
+            // 表示の更新
             document.getElementById('reportDuration').textContent = `${hrs}時間${mins}分`;
             document.getElementById('reportBedtimeJst').textContent = bedtimeJstStr;
             document.getElementById('reportWakeTimeJst').textContent = wakeTimeJstStr;
             document.getElementById('reportScore').textContent = score;
+
+            document.getElementById('reportRepaidDebt').textContent = `-${formatDurationText(repaidDebt)}`;
+            document.getElementById('reportRemainingDebt').textContent = formatDurationText(remainingDebt);
+
+            const debtMsg = document.getElementById('reportDebtMessage');
+            if (remainingDebt === 0) {
+                debtMsg.innerHTML = "🎉 <strong>おめでとうございます！睡眠負債（借金）を完済しました！</strong> この調子で良い睡眠習慣を維持しましょう。";
+            } else if (repaidDebt > 0) {
+                debtMsg.innerHTML = `今回の睡眠で <strong>${formatDurationText(repaidDebt)}</strong> の負債を返済しました！完済まであと ${formatDurationText(remainingDebt)} です。`;
+            } else {
+                debtMsg.innerHTML = "睡眠スコアが低かったため、今回は負債を返済できませんでした。次回はより良い睡眠環境を整えましょう。";
+            }
 
             document.getElementById('pctDeep').textContent = `${pctDeepVal}%`;
             document.getElementById('pctLight').textContent = `${pctLightVal}%`;
@@ -979,7 +1118,7 @@
         function exportJSON() {
             const reportData = {
                 app: "SleepPulse AI",
-                version: "2.0.0",
+                version: "2.1.0",
                 survey_target: savedSurveyData,
                 session: {
                     bedtime_jst: bedtimeJstStr,
