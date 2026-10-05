@@ -100,6 +100,17 @@
                 </p>
             </div>
 
+            <!-- 過去の負債引き継ぎ通知バナー -->
+            <div id="savedDebtBanner" class="hidden bg-brand-950/60 border border-brand-500/40 rounded-2xl p-4 text-xs text-brand-200 flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-clock-rotate-left text-brand-400 text-base"></i>
+                    <span>前回の睡眠負債記録を保持しています: <strong id="savedDebtText" class="text-brand-300 font-mono text-sm">0時間0分</strong></span>
+                </div>
+                <button type="button" onclick="clearSavedDebt()" class="px-2.5 py-1 bg-rose-900/50 hover:bg-rose-800 border border-rose-500/30 text-rose-300 rounded-lg text-[10px] transition">
+                    リセット
+                </button>
+            </div>
+
             <!-- 年齢設定 -->
             <div class="bg-slate-900/90 rounded-2xl p-5 border border-slate-800 shadow-xl space-y-4">
                 <div class="flex justify-between items-baseline">
@@ -190,7 +201,7 @@
                     </select>
                 </div>
 
-                <!-- Q4: 継続日数（新規追加） -->
+                <!-- Q4: 継続日数 -->
                 <div class="space-y-1.5 pt-2 border-t border-slate-800">
                     <label class="text-xs text-slate-300 font-semibold">Q4. 現在の睡眠生活（設定した就寝・起床時間）は何日続いていますか？</label>
                     <div class="flex items-center space-x-3">
@@ -233,11 +244,11 @@
                 <div class="bg-gradient-to-r from-rose-950/80 to-amber-950/80 rounded-2xl p-5 text-center border border-rose-500/40 shadow-lg">
                     <div class="flex justify-center items-center space-x-2 text-rose-400 text-xs font-bold uppercase tracking-wider mb-1">
                         <i class="fa-solid fa-receipt"></i>
-                        <span>診断された現在の睡眠負債（借金）</span>
+                        <span>現在の残りの睡眠負債（借金）</span>
                     </div>
                     <div class="text-4xl font-black text-rose-300 font-mono tracking-tight py-1" id="resDebtTime">0時間00分</div>
                     <p class="text-xs text-rose-200/80 mt-1">
-                        アンケート回答と継続日数から算出された睡眠不足の蓄積量です。<br>高スコアの睡眠を計測して負債を返済しましょう！
+                        蓄積された睡眠不足の累積データです。<br>高スコアの睡眠を計測して負債をどんどん減らしていきましょう！
                     </p>
                 </div>
 
@@ -296,7 +307,7 @@
             <div class="flex flex-col sm:flex-row gap-3">
                 <button type="button" onclick="backToInput()" class="w-full sm:w-1/2 py-3.5 bg-slate-800 hover:bg-slate-700 active:scale-98 text-slate-200 font-bold text-sm rounded-2xl border border-slate-700 transition cursor-pointer flex items-center justify-center space-x-2">
                     <i class="fa-solid fa-rotate-left"></i>
-                    <span>再設定・変更をする</span>
+                    <span>設定変更 / 過去データ確認</span>
                 </button>
 
                 <button type="button" onclick="proceedToSleepDetect()" class="w-full sm:w-1/2 py-3.5 bg-gradient-to-r from-brand-600 to-accent-teal hover:from-brand-500 hover:to-accent-teal active:scale-98 text-white font-bold text-sm rounded-2xl shadow-lg shadow-brand-600/30 transition cursor-pointer flex items-center justify-center space-x-2">
@@ -460,6 +471,14 @@
                     </div>
                 </div>
 
+                <!-- Cloudflare 送信ステータス -->
+                <div id="cfStatusBox" class="hidden rounded-xl p-3 border text-xs flex items-center justify-between">
+                    <div class="flex items-center space-x-2">
+                        <i id="cfStatusIcon" class="fa-solid fa-cloud-arrow-up text-sm"></i>
+                        <span id="cfStatusText">Cloudflare へデータを送信中...</span>
+                    </div>
+                </div>
+
                 <!-- 睡眠負債返済結果カード -->
                 <div class="bg-slate-950/90 rounded-2xl p-5 border border-brand-500/30 shadow-xl space-y-3">
                     <div class="flex items-center space-x-2 text-emerald-400 font-bold text-xs uppercase tracking-wider">
@@ -560,7 +579,7 @@
 
                 <button onclick="resetApp()" class="w-full sm:w-auto px-6 py-3.5 bg-brand-600 hover:bg-brand-500 active:scale-98 text-white text-sm font-semibold rounded-2xl shadow-lg shadow-brand-600/30 flex items-center justify-center space-x-2 transition cursor-pointer">
                     <i class="fa-solid fa-rotate-right"></i>
-                    <span>最初からやり直す</span>
+                    <span>負債記録を保持してもう一度返済する</span>
                 </button>
             </div>
         </section>
@@ -573,6 +592,14 @@
 
     <!-- JS Logic -->
     <script>
+        // ==================== Cloudflare Worker 設定 ====================
+        // ここをご自身の Cloudflare Worker の URL に書き換えてください。
+        const CLOUDFLARE_WORKER_URL = "https://your-worker-subdomain.workers.dev/api/sleep";
+
+        // --- LocalStorage キー ---
+        const STORAGE_KEY_SURVEY = "sleeppulse_survey_data";
+        const STORAGE_KEY_DEBT = "sleeppulse_current_debt_minutes";
+
         // --- アンケート状態データ ---
         let currentAge = 30;
         let savedSurveyData = null;
@@ -603,7 +630,84 @@
             initTimeOptions();
             checkCapabilities();
             initUnlockGesture();
+            loadSavedData();
         });
+
+        // 保存データの復元読み込み
+        function loadSavedData() {
+            const storedDebt = localStorage.getItem(STORAGE_KEY_DEBT);
+            const storedSurvey = localStorage.getItem(STORAGE_KEY_SURVEY);
+
+            if (storedSurvey) {
+                try {
+                    savedSurveyData = JSON.parse(storedSurvey);
+                } catch (e) {
+                    console.error("Failed to parse stored survey data", e);
+                }
+            }
+
+            if (storedDebt !== null) {
+                const debtMin = parseInt(storedDebt, 10);
+                if (!isNaN(debtMin)) {
+                    document.getElementById('savedDebtBanner').classList.remove('hidden');
+                    document.getElementById('savedDebtText').textContent = formatDurationText(debtMin);
+                    if (savedSurveyData) {
+                        savedSurveyData.currentDebtMinutes = debtMin;
+                    }
+                }
+            }
+        }
+
+        // 保存された負債記録のリセット
+        function clearSavedDebt() {
+            if (confirm("これまでの睡眠負債の減額記録をリセットして最初から診断し直しますか？")) {
+                localStorage.removeItem(STORAGE_KEY_DEBT);
+                localStorage.removeItem(STORAGE_KEY_SURVEY);
+                savedSurveyData = null;
+                document.getElementById('savedDebtBanner').classList.add('hidden');
+                alert("記録をリセットしました。");
+            }
+        }
+
+        // ==================== Cloudflare データ送信処理 ====================
+        async function sendDataToCloudflare(payload) {
+            const statusBox = document.getElementById('cfStatusBox');
+            const statusIcon = document.getElementById('cfStatusIcon');
+            const statusText = document.getElementById('cfStatusText');
+
+            if (!CLOUDFLARE_WORKER_URL || CLOUDFLARE_WORKER_URL.includes('your-worker-subdomain')) {
+                console.log('Cloudflare Worker URL が未設定のため、デモモードで処理します。');
+                return;
+            }
+
+            statusBox.classList.remove('hidden');
+            statusBox.className = "rounded-xl p-3 border text-xs flex items-center justify-between bg-brand-950/40 border-brand-500/30 text-brand-300";
+            statusIcon.className = "fa-solid fa-spinner animate-spin text-sm";
+            statusText.textContent = "Cloudflare にデータを送信中...";
+
+            try {
+                const response = await fetch(CLOUDFLARE_WORKER_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    statusBox.className = "rounded-xl p-3 border text-xs flex items-center justify-between bg-emerald-950/40 border-emerald-500/30 text-emerald-300";
+                    statusIcon.className = "fa-solid fa-cloud-check text-sm";
+                    statusText.textContent = "Cloudflare にデータを正常に送信・同期しました";
+                } else {
+                    throw new Error(`HTTP Error: ${response.status}`);
+                }
+            } catch (err) {
+                console.error("Cloudflare send error: ", err);
+                statusBox.className = "rounded-xl p-3 border text-xs flex items-center justify-between bg-amber-950/40 border-amber-500/30 text-amber-300";
+                statusIcon.className = "fa-solid fa-triangle-exclamation text-sm";
+                statusText.textContent = "Cloudflare への送信に失敗しました（ローカル記録は保存されています）";
+            }
+        }
 
         // ==================== アンケート処理 ====================
         function getIdealData(age) {
@@ -712,27 +816,30 @@
             const sleepMin = parseInt(document.getElementById('sleepSelect').value);
             const wakeMin = parseInt(document.getElementById('wakeSelect').value);
             
-            // 設定した目標睡眠時間（分）
             const actualDiffMin = calculateSleepDurationMinutes(sleepMin, wakeMin);
             const ideal = getIdealData(currentAge);
 
-            // アンケート回答の取得（各回答値は「分」）
             const q1 = parseInt(document.getElementById('qDayDrowsiness').value);
             const q2 = parseInt(document.getElementById('qHolidaySleep').value);
             const q3 = parseInt(document.getElementById('qWakeQuality').value);
-            
-            // Q4. その生活が続いている日数（継続日数）
             const daysContinued = Math.max(1, parseInt(document.getElementById('qDaysContinued').value) || 1);
 
-            // 理想の睡眠時間の平均（分単位）
             const idealAvgMin = (ideal.min + ideal.max) / 2;
-
-            // 1日あたりの不足分（目標時間が理想平均以上の場合は0）
             const dailyShortageMin = Math.max(0, idealAvgMin - actualDiffMin);
-
-            // 【新規計算式】初期負債 (分)
-            // (Q1 ＋ Q2 ＋ Q3) ＋ (理想の睡眠時間の平均 － 設定した目標睡眠時間) × その生活が続いている日数
             const initialDebtMinutes = (q1 + q2 + q3) + Math.round(dailyShortageMin * daysContinued);
+
+            // 前回の睡眠負債がLocalStorageに保存されていればそれを引き継ぎ、無ければ初期診断値を適用
+            const storedDebt = localStorage.getItem(STORAGE_KEY_DEBT);
+            let effectiveCurrentDebt = initialDebtMinutes;
+
+            if (storedDebt !== null) {
+                const parsedDebt = parseInt(storedDebt, 10);
+                if (!isNaN(parsedDebt)) {
+                    effectiveCurrentDebt = parsedDebt;
+                }
+            } else {
+                localStorage.setItem(STORAGE_KEY_DEBT, initialDebtMinutes);
+            }
 
             const heroBox = document.getElementById('diffHeroBox');
             const heroTitle = document.getElementById('diffHeroTitle');
@@ -770,8 +877,8 @@
             document.getElementById('resSleepTime').textContent = formatMinTo24H(sleepMin);
             document.getElementById('resWakeTime').textContent = formatMinTo24H(wakeMin);
             
-            // 負債時間表示の更新
-            document.getElementById('resDebtTime').textContent = formatDurationText(initialDebtMinutes);
+            // 負債時間表示の更新（引き継がれた残高）
+            document.getElementById('resDebtTime').textContent = formatDurationText(effectiveCurrentDebt);
 
             savedSurveyData = {
                 age: currentAge,
@@ -784,9 +891,11 @@
                 daysContinued: daysContinued,
                 idealRangeText: ideal.rangeText,
                 isInverted: isInvertedSchedule(sleepMin, wakeMin),
-                initialDebtMinutes: initialDebtMinutes, // 算出された初期負債
-                currentDebtMinutes: initialDebtMinutes  // 残りの負債
+                initialDebtMinutes: initialDebtMinutes,
+                currentDebtMinutes: effectiveCurrentDebt
             };
+
+            localStorage.setItem(STORAGE_KEY_SURVEY, JSON.stringify(savedSurveyData));
 
             // アプリ連携用送信
             if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.sleepHandler) {
@@ -803,12 +912,12 @@
         }
 
         function backToInput() {
+            loadSavedData();
             document.getElementById('surveyResultScreen').classList.add('hidden');
             document.getElementById('surveyInputScreen').classList.remove('hidden');
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        // アンケート結果から SleepDetect2 (準備画面) に移動
         function proceedToSleepDetect() {
             document.getElementById('surveyResultScreen').classList.add('hidden');
             document.getElementById('setupScreen').classList.remove('hidden');
@@ -1074,11 +1183,18 @@
                 repaidDebt = 0;
             }
 
+            // 前回の睡眠負債を引き継ぎ、今回分を差し引く（どんどん減らせるように永続保持）
             let prevDebt = savedSurveyData ? savedSurveyData.currentDebtMinutes : 0;
             let remainingDebt = Math.max(0, prevDebt - repaidDebt);
 
             if (savedSurveyData) {
                 savedSurveyData.currentDebtMinutes = remainingDebt;
+            }
+
+            // LocalStorage へ差し引き後の負債を上書き保存
+            localStorage.setItem(STORAGE_KEY_DEBT, remainingDebt);
+            if (savedSurveyData) {
+                localStorage.setItem(STORAGE_KEY_SURVEY, JSON.stringify(savedSurveyData));
             }
 
             // 表示の更新
@@ -1113,12 +1229,33 @@
             document.getElementById('reportScreen').classList.remove('hidden');
             document.getElementById('globalStatusDot').className = 'w-2 h-2 rounded-full bg-slate-500';
             document.getElementById('globalStatusText').textContent = '解析完了';
+
+            // Cloudflare Worker への自動データ送信実行
+            const payload = {
+                app: "SleepPulse AI",
+                version: "2.2.0",
+                survey_target: savedSurveyData,
+                session: {
+                    bedtime_jst: bedtimeJstStr,
+                    wake_time_jst: wakeTimeJstStr,
+                    iso_start: startTime ? startTime.toISOString() : null,
+                    iso_end: endTime ? endTime.toISOString() : null,
+                    total_duration_minutes: totalMins,
+                    sleep_score: score,
+                    repaid_debt_minutes: repaidDebt,
+                    remaining_debt_minutes: remainingDebt,
+                    snore_count: snoreCount,
+                    awakening_count: awakeningCount,
+                    timeline: timelineData
+                }
+            };
+            sendDataToCloudflare(payload);
         }
 
         function exportJSON() {
             const reportData = {
                 app: "SleepPulse AI",
-                version: "2.1.0",
+                version: "2.2.0",
                 survey_target: savedSurveyData,
                 session: {
                     bedtime_jst: bedtimeJstStr,
@@ -1144,6 +1281,7 @@
         }
 
         function resetApp() {
+            loadSavedData();
             document.getElementById('reportScreen').classList.add('hidden');
             document.getElementById('surveyInputScreen').classList.remove('hidden');
             document.getElementById('statusBadge').classList.add('hidden');
