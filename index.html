@@ -104,7 +104,7 @@
             <div id="savedDebtBanner" class="hidden bg-brand-950/60 border border-brand-500/40 rounded-2xl p-4 text-xs text-brand-200 flex items-center justify-between">
                 <div class="flex items-center space-x-2">
                     <i class="fa-solid fa-clock-rotate-left text-brand-400 text-base"></i>
-                    <span>前回の睡眠負債記録を保持しています: <strong id="savedDebtText" class="text-brand-300 font-mono text-sm">0時間0分</strong></span>
+                    <span>前回の睡眠負債記録を保持しています: <strong id="savedDebtText" class="text-brand-300 font-mono text-sm">0円</strong></span>
                 </div>
                 <button type="button" onclick="clearSavedDebt()" class="px-2.5 py-1 bg-rose-900/50 hover:bg-rose-800 border border-rose-500/30 text-rose-300 rounded-lg text-[10px] transition">
                     リセット
@@ -246,7 +246,7 @@
                         <i class="fa-solid fa-receipt"></i>
                         <span>現在の残りの睡眠負債（借金）</span>
                     </div>
-                    <div class="text-4xl font-black text-rose-300 font-mono tracking-tight py-1" id="resDebtTime">0時間00分</div>
+                    <div class="text-4xl font-black text-rose-300 font-mono tracking-tight py-1" id="resDebtTime">0円</div>
                     <p class="text-xs text-rose-200/80 mt-1">
                         蓄積された睡眠不足の累積データです。<br>高スコアの睡眠を計測して負債をどんどん減らしていきましょう！
                     </p>
@@ -489,11 +489,11 @@
                     <div class="grid grid-cols-2 gap-3 text-center">
                         <div class="bg-slate-900 p-3 rounded-xl border border-slate-800">
                             <span class="text-[10px] text-slate-400 font-semibold block">今回の返済額 (減額)</span>
-                            <span class="text-xl font-extrabold text-emerald-400 font-mono" id="reportRepaidDebt">-0分</span>
+                            <span class="text-xl font-extrabold text-emerald-400 font-mono" id="reportRepaidDebt">0円</span>
                         </div>
                         <div class="bg-slate-900 p-3 rounded-xl border border-slate-800">
                             <span class="text-[10px] text-slate-400 font-semibold block">残りの睡眠負債</span>
-                            <span class="text-xl font-extrabold text-rose-400 font-mono" id="reportRemainingDebt">0時間0分</span>
+                            <span class="text-xl font-extrabold text-rose-400 font-mono" id="reportRemainingDebt">0円</span>
                         </div>
                     </div>
 
@@ -577,7 +577,7 @@
                     <span>全詳細データをJSON保存</span>
                 </button>
 
-                <button onclick="startSleepTracking()" class="w-full sm:w-auto px-6 py-3.5 bg-brand-600 hover:bg-brand-500 active:scale-98 text-white text-sm font-semibold rounded-2xl shadow-lg shadow-brand-600/30 flex items-center justify-center space-x-2 transition cursor-pointer">
+                <button onclick="goToSetupScreen()" class="w-full sm:w-auto px-6 py-3.5 bg-brand-600 hover:bg-brand-500 active:scale-98 text-white text-sm font-semibold rounded-2xl shadow-lg shadow-brand-600/30 flex items-center justify-center space-x-2 transition cursor-pointer">
                     <i class="fa-solid fa-bed text-lg"></i>
                     <span>計測を開始する</span>
                 </button>
@@ -598,7 +598,7 @@
 
         // --- LocalStorage キー ---
         const STORAGE_KEY_SURVEY = "sleeppulse_survey_data";
-        const STORAGE_KEY_DEBT = "sleeppulse_current_debt_minutes";
+        const STORAGE_KEY_DEBT = "sleeppulse_current_debt_yen";
 
         // --- アンケート状態データ ---
         let currentAge = 30;
@@ -647,12 +647,12 @@
             }
 
             if (storedDebt !== null) {
-                const debtMin = parseInt(storedDebt, 10);
-                if (!isNaN(debtMin)) {
+                const debtYen = parseInt(storedDebt, 10);
+                if (!isNaN(debtYen)) {
                     document.getElementById('savedDebtBanner').classList.remove('hidden');
-                    document.getElementById('savedDebtText').textContent = formatDurationText(debtMin);
+                    document.getElementById('savedDebtText').textContent = formatYen(debtYen);
                     if (savedSurveyData) {
-                        savedSurveyData.currentDebtMinutes = debtMin;
+                        savedSurveyData.currentDebtMinutes = debtYen;
                     }
                 }
             }
@@ -768,6 +768,11 @@
             return `${hours}時間${mins > 0 ? mins + '分' : ''}`;
         }
 
+        // 金額（円）のフォーマット用関数（絶対値を用いてマイナス記号「-」を除去）
+        function formatYen(amount) {
+            return `${Math.abs(Number(amount)).toLocaleString()}円`;
+        }
+
         function calculateSleepDurationMinutes(sleepMin, wakeMin) {
             let diff = wakeMin - sleepMin;
             if (diff <= 0) {
@@ -826,7 +831,9 @@
 
             const idealAvgMin = (ideal.min + ideal.max) / 2;
             const dailyShortageMin = Math.max(0, idealAvgMin - actualDiffMin);
-            const initialDebtMinutes = (q1 + q2 + q3) + Math.round(dailyShortageMin * daysContinued);
+
+            // 負債を -(時間) として処理（内部的にはマイナス値として保持）
+            const initialDebtMinutes = -((q1 + q2 + q3) + Math.round(dailyShortageMin * daysContinued));
 
             // 前回の睡眠負債がLocalStorageに保存されていればそれを引き継ぎ、無ければ初期診断値を適用
             const storedDebt = localStorage.getItem(STORAGE_KEY_DEBT);
@@ -877,8 +884,8 @@
             document.getElementById('resSleepTime').textContent = formatMinTo24H(sleepMin);
             document.getElementById('resWakeTime').textContent = formatMinTo24H(wakeMin);
             
-            // 負債時間表示の更新（引き継がれた残高）
-            document.getElementById('resDebtTime').textContent = formatDurationText(effectiveCurrentDebt);
+            // 負債表示の更新（引き継がれた残高・円表記）
+            document.getElementById('resDebtTime').textContent = formatYen(effectiveCurrentDebt);
 
             savedSurveyData = {
                 age: currentAge,
@@ -927,6 +934,13 @@
         function backToSurveyResult() {
             document.getElementById('setupScreen').classList.add('hidden');
             document.getElementById('surveyResultScreen').classList.remove('hidden');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // 解析報告画面から計測準備画面へ遷移する処理
+        function goToSetupScreen() {
+            document.getElementById('reportScreen').classList.add('hidden');
+            document.getElementById('setupScreen').classList.remove('hidden');
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
@@ -1132,7 +1146,7 @@
             overlay.addEventListener('touchend', cancelUnlock);
         }
 
-        function stopSleepTracking() {
+function stopSleepTracking() {
             endTime = new Date();
             wakeTimeJstStr = formatJST(endTime);
 
@@ -1176,23 +1190,23 @@
             if (snoreCount > 20) score -= 10;
             score = Math.max(20, Math.min(100, score));
 
-            // 計測スコアに応じた睡眠負債の返済計算
-            let repaidDebt = 0;
-            if (score >= 60) {
-                repaidDebt = Math.round(totalMins * (score / 100));
-            } else {
-                repaidDebt = 0;
-            }
+            // 理想の睡眠時間（分）の取得（設定されていない場合はデフォルトで成人8時間＝480分）
+            const idealAvgMins = (savedSurveyData && savedSurveyData.idealAvgMinutes) 
+                ? savedSurveyData.idealAvgMinutes 
+                : 480;
 
-            // 前回の睡眠負債を引き継ぎ、今回分を差し引く（どんどん減らせるように永続保持）
+            // ★指定された計算式： (その時の睡眠時間) - (理想の睡眠時間)
+            const debtChangeMinutes = totalMins - idealAvgMins;
+
+            // 前回の睡眠負債（マイナス値として保持）を取得し、変化量を加算
             let prevDebt = savedSurveyData ? savedSurveyData.currentDebtMinutes : 0;
-            let remainingDebt = Math.max(0, prevDebt - repaidDebt);
+            let remainingDebt = Math.min(0, prevDebt + debtChangeMinutes);
 
             if (savedSurveyData) {
                 savedSurveyData.currentDebtMinutes = remainingDebt;
             }
 
-            // LocalStorage へ差し引き後の負債を上書き保存
+            // LocalStorage へ保存
             localStorage.setItem(STORAGE_KEY_DEBT, remainingDebt);
             if (savedSurveyData) {
                 localStorage.setItem(STORAGE_KEY_SURVEY, JSON.stringify(savedSurveyData));
@@ -1204,16 +1218,21 @@
             document.getElementById('reportWakeTimeJst').textContent = wakeTimeJstStr;
             document.getElementById('reportScore').textContent = score;
 
-            document.getElementById('reportRepaidDebt').textContent = `-${formatDurationText(repaidDebt)}`;
-            document.getElementById('reportRemainingDebt').textContent = formatDurationText(remainingDebt);
+            // 返済額（変化量）および残りの負債の出力
+            document.getElementById('reportRepaidDebt').textContent = debtChangeMinutes >= 0 
+                ? `+${formatDurationText(debtChangeMinutes)}` 
+                : `-${formatDurationText(Math.abs(debtChangeMinutes))}`;
+            document.getElementById('reportRemainingDebt').textContent = formatYen(remainingDebt);
 
             const debtMsg = document.getElementById('reportDebtMessage');
-            if (remainingDebt === 0) {
+            if (remainingDebt >= 0) {
                 debtMsg.innerHTML = "🎉 <strong>おめでとうございます！睡眠負債（借金）を完済しました！</strong> この調子で良い睡眠習慣を維持しましょう。";
-            } else if (repaidDebt > 0) {
-                debtMsg.innerHTML = `今回の睡眠で <strong>${formatDurationText(repaidDebt)}</strong> の負債を返済しました！完済まであと ${formatDurationText(remainingDebt)} です。`;
+            } else if (debtChangeMinutes > 0) {
+                debtMsg.innerHTML = `今回の睡眠で <strong>${formatDurationText(debtChangeMinutes)}</strong> 負債を返済しました！完済まであと ${formatYen(remainingDebt)} です。`;
+            } else if (debtChangeMinutes < 0) {
+                debtMsg.innerHTML = `理想の睡眠時間に <strong>${formatDurationText(Math.abs(debtChangeMinutes))}</strong> 不足したため、睡眠負債が蓄積されました。`;
             } else {
-                debtMsg.innerHTML = "睡眠スコアが低かったため、今回は負債を返済できませんでした。次回はより良い睡眠環境を整えましょう。";
+                debtMsg.innerHTML = "理想通りの睡眠時間を確保できました！";
             }
 
             document.getElementById('pctDeep').textContent = `${pctDeepVal}%`;
@@ -1243,7 +1262,7 @@
                     iso_end: endTime ? endTime.toISOString() : null,
                     total_duration_minutes: totalMins,
                     sleep_score: score,
-                    repaid_debt_minutes: repaidDebt,
+                    debt_change_minutes: debtChangeMinutes,
                     remaining_debt_minutes: remainingDebt,
                     snore_count: snoreCount,
                     awakening_count: awakeningCount,
