@@ -594,7 +594,7 @@
     <script>
         // ==================== Cloudflare Worker 設定 ====================
         // ここをご自身の Cloudflare Worker の URL に書き換えてください。
-        const CLOUDFLARE_WORKER_URL = "https://your-worker-subdomain.workers.dev/api/sleep";
+        const CLOUDFLARE_WORKER_URL = "https://sleeptest.s251022.workers.dev/";
 
         // --- LocalStorage キー ---
         const STORAGE_KEY_SURVEY = "sleeppulse_survey_data";
@@ -1146,7 +1146,7 @@
             overlay.addEventListener('touchend', cancelUnlock);
         }
 
-function stopSleepTracking() {
+        function stopSleepTracking() {
             endTime = new Date();
             wakeTimeJstStr = formatJST(endTime);
 
@@ -1184,29 +1184,29 @@ function stopSleepTracking() {
             const pctRemVal = Math.round((countRem / totalSamples) * 100);
             const pctAwakeVal = Math.round((countAwake / totalSamples) * 100);
 
-            let score = 85;
+            let score = 100;
             if (totalMins < 360) score -= 15;
             if (awakeningCount > 3) score -= (awakeningCount * 3);
             if (snoreCount > 20) score -= 10;
             score = Math.max(20, Math.min(100, score));
 
-            // 理想の睡眠時間（分）の取得（設定されていない場合はデフォルトで成人8時間＝480分）
-            const idealAvgMins = (savedSurveyData && savedSurveyData.idealAvgMinutes) 
-                ? savedSurveyData.idealAvgMinutes 
-                : 480;
+            // 計測スコアに応じた睡眠負債の返済計算（返済額は正の値）
+            let repaidDebt = 0;
+            if (score >= 60) {
+                repaidDebt = Math.round(totalMins * (score / 100));
+            } else {
+                repaidDebt = 0;
+            }
 
-            // ★指定された計算式： (その時の睡眠時間) - (理想の睡眠時間)
-            const debtChangeMinutes = totalMins - idealAvgMins;
-
-            // 前回の睡眠負債（マイナス値として保持）を取得し、変化量を加算
+            // 前回の睡眠負債（マイナスの値）に返済額を加算（0を目指す）
             let prevDebt = savedSurveyData ? savedSurveyData.currentDebtMinutes : 0;
-            let remainingDebt = Math.min(0, prevDebt + debtChangeMinutes);
+            let remainingDebt = Math.min(0, prevDebt + repaidDebt);
 
             if (savedSurveyData) {
                 savedSurveyData.currentDebtMinutes = remainingDebt;
             }
 
-            // LocalStorage へ保存
+            // LocalStorage へ加算後の負債を保存
             localStorage.setItem(STORAGE_KEY_DEBT, remainingDebt);
             if (savedSurveyData) {
                 localStorage.setItem(STORAGE_KEY_SURVEY, JSON.stringify(savedSurveyData));
@@ -1218,21 +1218,17 @@ function stopSleepTracking() {
             document.getElementById('reportWakeTimeJst').textContent = wakeTimeJstStr;
             document.getElementById('reportScore').textContent = score;
 
-            // 返済額（変化量）および残りの負債の出力
-            document.getElementById('reportRepaidDebt').textContent = debtChangeMinutes >= 0 
-                ? `+${formatDurationText(debtChangeMinutes)}` 
-                : `-${formatDurationText(Math.abs(debtChangeMinutes))}`;
+            // 返済額および残りの負債（符号なし）の出力
+            document.getElementById('reportRepaidDebt').textContent = formatYen(repaidDebt);
             document.getElementById('reportRemainingDebt').textContent = formatYen(remainingDebt);
 
             const debtMsg = document.getElementById('reportDebtMessage');
             if (remainingDebt >= 0) {
                 debtMsg.innerHTML = "🎉 <strong>おめでとうございます！睡眠負債（借金）を完済しました！</strong> この調子で良い睡眠習慣を維持しましょう。";
-            } else if (debtChangeMinutes > 0) {
-                debtMsg.innerHTML = `今回の睡眠で <strong>${formatDurationText(debtChangeMinutes)}</strong> 負債を返済しました！完済まであと ${formatYen(remainingDebt)} です。`;
-            } else if (debtChangeMinutes < 0) {
-                debtMsg.innerHTML = `理想の睡眠時間に <strong>${formatDurationText(Math.abs(debtChangeMinutes))}</strong> 不足したため、睡眠負債が蓄積されました。`;
+            } else if (repaidDebt > 0) {
+                debtMsg.innerHTML = `今回の睡眠で <strong>${formatYen(repaidDebt)}</strong> の負債を返済しました！完済まであと ${formatYen(remainingDebt)} です。`;
             } else {
-                debtMsg.innerHTML = "理想通りの睡眠時間を確保できました！";
+                debtMsg.innerHTML = "睡眠スコアが低かったため、今回は負債を返済できませんでした。次回はより良い睡眠環境を整えましょう。";
             }
 
             document.getElementById('pctDeep').textContent = `${pctDeepVal}%`;
@@ -1262,7 +1258,7 @@ function stopSleepTracking() {
                     iso_end: endTime ? endTime.toISOString() : null,
                     total_duration_minutes: totalMins,
                     sleep_score: score,
-                    debt_change_minutes: debtChangeMinutes,
+                    repaid_debt_minutes: repaidDebt,
                     remaining_debt_minutes: remainingDebt,
                     snore_count: snoreCount,
                     awakening_count: awakeningCount,
